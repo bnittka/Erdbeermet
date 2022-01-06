@@ -158,8 +158,10 @@ class Pipeline:
 if __name__ == "__main__":
 
     sample_size = 10
+    pipe = Pipeline(6)
+    results_of_run = pipe.run()
    
-    results = dict()
+"""     results = dict()
     for matrix_size in [6]:
         results[f"N={matrix_size}"] = dict()
         for clocklike in [True, False]:
@@ -198,7 +200,7 @@ if __name__ == "__main__":
     resultdir = "results"
     outfile = os.path.join(resultdir, f"results_samplesize{sample_size}.json")
     with open(outfile, "w") as f: 
-        json.dump(results, f)
+        json.dump(results, f) """
 
 
     
