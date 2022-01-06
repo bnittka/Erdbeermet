@@ -192,14 +192,19 @@ def _compute_alpha(V, D, x, y, z, u, v):
         return np.nan
 
     
-def _find_candidates(D, V, print_info):
+def _find_candidates(D, V, print_info, blocked_leaves=None):
     
     candidates = []
     n = len(V)
     
     if print_info: print(f'-----> n = {n}, V = {V} ---> Candidates')
     
+
     for x, y, z in permutations(V, 3):
+
+        if blocked_leaves: # list of blocked leaves
+            if z in blocked_leaves:
+                continue
         
         # considering x < y suffices
         if x > y:
@@ -331,7 +336,7 @@ def _finalize_tree(recognition_tree):
     _sort_children(recognition_tree.root)
     
     
-def recognize(D, first_candidate_only=False, print_info=False):
+def recognize(D, first_candidate_only=False, print_info=False, blocked_leaves=None):
     """Recognition of type R matrices.
     
     Parameters
@@ -382,7 +387,7 @@ def recognize(D, first_candidate_only=False, print_info=False):
         
         if n > 4:
         
-            candidates = _find_candidates(D, V, print_info)
+            candidates = _find_candidates(D, V, print_info, blocked_leaves)
             
             found_valid = False
             

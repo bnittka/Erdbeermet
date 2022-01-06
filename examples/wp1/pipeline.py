@@ -1,6 +1,7 @@
 
 import os
 import time
+import json
 
 
 from erdbeermet.simulation import simulate, load
@@ -52,67 +53,110 @@ class Pipeline:
         #recognition_tree.visualize(save_as=os.path.join(result_dir, f'history_{self.N}_{"circular" if self.circular else "noncircular"}_{"clocklike" if self.clocklike else "nonclocklike"}.svg'))
 
 
-        return timedelta, recognized_rmap, leaves_match, overlap
+        return {"runtime" : timedelta, 
+                "recognized_rmap": recognized_rmap, 
+                "leaves_match": leaves_match, 
+                "overlap": overlap }
 
-    def recognize_with_blocked_leaves(self, scenario):
-        # WP3
-        pass
+    def recognition_with_blocked_leaves(self, scenario):
+
+        first_4_leaves_sim = [scenario.history[0][0],
+                                scenario.history[0][2],
+                                scenario.history[1][2],
+                                scenario.history[2][2]]
+
+        start_time = time.time()
+        recognition_tree = recognize(scenario.D, first_candidate_only=True, print_info=False, blocked_leaves=first_4_leaves_sim)
+        timedelta = time.time() - start_time
+
+        # Classify whether the distance matrix was correctly recognized as an R-Map.
+        recognized_rmap = recognition_tree.successes > 0
+
+        # Classify whether the final 4-leaf map after recognition matches the first 4 leaves of the simulation.
+        final_4_leaf_maps = []
+        for node in recognition_tree.preorder():
+            if node.valid_ways == 1:
+                final_4_leaf_map = node.V
+                break
+                # final_4_leaf_maps.append(node.V)
+
+        # leaves_match = first_4_leaves_sim in final_4_leaf_maps
+        leaves_match = first_4_leaves_sim == final_4_leaf_map
+
+
+        # Measure divergence of the reconstructed steps from true steps of the simulation, e.g. by counting common triples.
+        true_triples = [tuple(sorted(step[:3])) for step in scenario.history]
+
+        recognition_triples = [node.R_step[:3] for node in recognition_tree.postorder() if node.R_step is not None and node.valid_ways > 0]
+
+        overlap = len(set(recognition_triples).intersection(set(true_triples))) # / len(recognition_triples)
+
+        # Plot results
+        result_dir = "results"
+        #recognition_tree.visualize(save_as=os.path.join(result_dir, f'history_{self.N}_{"circular" if self.circular else "noncircular"}_{"clocklike" if self.clocklike else "nonclocklike"}.svg'))
+
+
+        return {"runtime" : timedelta, 
+                "recognized_rmap": recognized_rmap, 
+                "leaves_match": leaves_match, 
+                "overlap": overlap }
+
 
     def run(self):
 
         result_dir = "results"
+        results = dict()
 
         scenario = simulate(self.N, self.branching_prob, self.circular, self.clocklike)
 
-        timedelta1, recognized_rmap1, leavesmatch1, overlap1 = self.recognition_original_algorithm(scenario)
+        results["original_algo"] = self.recognition_original_algorithm(scenario)
 
-        if not recognized_rmap1:
+        if not results["original_algo"]["recognized_rmap"]:
             history_file = os.path.join(result_dir, f'history_{self.N}_{"circular" if self.circular else "noncircular"}_{"clocklike" if self.clocklike else "nonclocklike"}')
             scenario.write_history(history_file)
             scenario_4only = load(history_file, stop_after=4)
             plot_box_graph(scenario_4only.D, labels=['a', 'b', 'c', 'd'])
 
-        return timedelta1, recognized_rmap1, leavesmatch1, overlap1
+        results["blocked_leaves"] = self.recognition_with_blocked_leaves(scenario)
+
+        return results
 
 if __name__ == "__main__":
 
-    for matrix_size in [8]:
-        runtimes = []
-        failed_recognitions = 0
-        for i in range(10):
-            pipe1 = Pipeline(matrix_size)
-            runtime1, recognized_rmap1, leavesmatch1, overlap1 = pipe1.run()
-            runtimes.append(runtime1)
-            if not recognized_rmap1:
-                failed_recognitions += 1
-        avg_runtime = sum(runtimes) / len(runtimes)
-        print(f"Average runtime: {avg_runtime}")
-        print(f"Failed recognitions: {failed_recognitions}")
+    sample_size = 10
+   
+    results = dict()
+    for matrix_size in [6]:
+        results[f"N={matrix_size}"] = dict()
+        for clocklike in [True, False]:
+            results[f"N={matrix_size}"][f"clocklike={clocklike}"] = dict()
+            for circular in [True, False]:
+                runtimes_original_algo = []
+                runtimes_blocked_leaves = []
+                failed_recognitions_original_algo = 0
+                failed_recognitions_blocked_leaves = 0
+                for i in range(sample_size):
+                    pipe = Pipeline(matrix_size, clocklike=clocklike, circular=circular)
+                    results_of_run = pipe.run()
+                    runtimes_original_algo.append(results_of_run["original_algo"]["runtime"])
+                    runtimes_blocked_leaves.append(results_of_run["blocked_leaves"]["runtime"])
+                    if not results_of_run["original_algo"]["recognized_rmap"]:
+                        failed_recognitions_original_algo += 1
+                    if not results_of_run["blocked_leaves"]["recognized_rmap"]:
+                        failed_recognitions_blocked_leaves += 1
+                avg_runtime_original_algo = sum(runtimes_original_algo) / len(runtimes_original_algo)
+                avg_runtime_blocked_leaves = sum(runtimes_blocked_leaves) / len(runtimes_blocked_leaves)
+                results[f"N={matrix_size}"][f"clocklike={clocklike}"][f"circular={circular}"] = {"original algo" : {"avg runtime" : avg_runtime_original_algo,
+                                                                                                                    "failed recognitions" : failed_recognitions_original_algo},
+                                                                                                "blocked leaves" : {"avg runtime" : avg_runtime_blocked_leaves,
+                                                                                                                    "failed recognitions" : failed_recognitions_blocked_leaves}
+                }
 
-    for matrix_size in [8]:
-        runtimes = []
-        failed_recognitions = 0
-        for i in range(10):
-            pipe1 = Pipeline(matrix_size, clocklike=True)
-            runtime1, recognized_rmap1, leavesmatch1, overlap1 = pipe1.run()
-            runtimes.append(runtime1)
-            if not recognized_rmap1:
-                failed_recognitions += 1
-        avg_runtime = sum(runtimes) / len(runtimes)
-        print(f"Average runtime: {avg_runtime}")
-        print(f"Failed recognitions: {failed_recognitions}")
+    print(results)
+    resultdir = "results"
+    outfile = os.path.join(resultdir, f"results_samplesize{sample_size}.json")
+    with open(outfile, "w") as f: 
+        json.dump(results, f)
 
 
-    for matrix_size in [8]:
-        runtimes = []
-        failed_recognitions = 0
-        for i in range(10):
-            pipe1 = Pipeline(matrix_size, circular=True)
-            runtime1, recognized_rmap1, leavesmatch1, overlap1 = pipe1.run()
-            runtimes.append(runtime1)
-            if not recognized_rmap1:
-                failed_recognitions += 1
-        avg_runtime = sum(runtimes) / len(runtimes)
-        print(f"Average runtime: {avg_runtime}")
-        print(f"Failed recognitions: {failed_recognitions}")
-            
+    
