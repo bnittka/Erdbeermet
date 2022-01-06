@@ -25,12 +25,11 @@ class Pipeline:
         recognized_rmap = recognition_tree.successes > 0
 
         # Classify whether the final 4-leaf map after recognition matches the first 4 leaves of the simulation.
-        final_4_leaf_maps = []
+        cooptimal_solutions = 0
         for node in recognition_tree.preorder():
             if node.valid_ways == 1:
                 final_4_leaf_map = node.V
-                break
-                # final_4_leaf_maps.append(node.V)
+                cooptimal_solutions += 1
 
         first_4_leaves_sim = [scenario.history[0][0],
                                 scenario.history[0][2],
@@ -38,25 +37,30 @@ class Pipeline:
                                 scenario.history[2][2]]
 
         # leaves_match = first_4_leaves_sim in final_4_leaf_maps
-        leaves_match = first_4_leaves_sim == final_4_leaf_map
+
+        if recognized_rmap:
+            leaves_match = first_4_leaves_sim == final_4_leaf_map
 
 
-        # Measure divergence of the reconstructed steps from true steps of the simulation, e.g. by counting common triples.
-        true_triples = [tuple(sorted(step[:3])) for step in scenario.history]
+            # Measure divergence of the reconstructed steps from true steps of the simulation, e.g. by counting common triples.
+            true_triples = [tuple(sorted(step[:3])) for step in scenario.history]
 
-        recognition_triples = [node.R_step[:3] for node in recognition_tree.postorder() if node.R_step is not None and node.valid_ways > 0]
+            recognition_triples = [node.R_step[:3] for node in recognition_tree.postorder() if node.R_step is not None and node.valid_ways > 0]
 
-        overlap = len(set(recognition_triples).intersection(set(true_triples))) # / len(recognition_triples)
-
-        # Plot results
-        result_dir = "results"
-        #recognition_tree.visualize(save_as=os.path.join(result_dir, f'history_{self.N}_{"circular" if self.circular else "noncircular"}_{"clocklike" if self.clocklike else "nonclocklike"}.svg'))
+            overlap = len(set(recognition_triples).intersection(set(true_triples))) # / len(recognition_triples)
+        else:
+            leaves_match = False
+            overlap = 0
+            # Plot results
+            result_dir = "results"
+            #recognition_tree.visualize(save_as=os.path.join(result_dir, f'history_{self.N}_{"circular" if self.circular else "noncircular"}_{"clocklike" if self.clocklike else "nonclocklike"}.svg'))
 
 
         return {"runtime" : timedelta, 
                 "recognized_rmap": recognized_rmap, 
                 "leaves_match": leaves_match, 
-                "overlap": overlap }
+                "overlap": overlap,
+                "cooptimal_solutions": cooptimal_solutions }
 
     def recognition_with_blocked_leaves(self, scenario):
 
@@ -73,33 +77,38 @@ class Pipeline:
         recognized_rmap = recognition_tree.successes > 0
 
         # Classify whether the final 4-leaf map after recognition matches the first 4 leaves of the simulation.
-        final_4_leaf_maps = []
+        cooptimal_solutions = 0
         for node in recognition_tree.preorder():
             if node.valid_ways == 1:
                 final_4_leaf_map = node.V
-                break
-                # final_4_leaf_maps.append(node.V)
+                cooptimal_solutions += 1
 
         # leaves_match = first_4_leaves_sim in final_4_leaf_maps
-        leaves_match = first_4_leaves_sim == final_4_leaf_map
+
+        if recognized_rmap:
+            leaves_match = first_4_leaves_sim == final_4_leaf_map
 
 
-        # Measure divergence of the reconstructed steps from true steps of the simulation, e.g. by counting common triples.
-        true_triples = [tuple(sorted(step[:3])) for step in scenario.history]
+            # Measure divergence of the reconstructed steps from true steps of the simulation, e.g. by counting common triples.
+            true_triples = [tuple(sorted(step[:3])) for step in scenario.history]
 
-        recognition_triples = [node.R_step[:3] for node in recognition_tree.postorder() if node.R_step is not None and node.valid_ways > 0]
+            recognition_triples = [node.R_step[:3] for node in recognition_tree.postorder() if node.R_step is not None and node.valid_ways > 0]
 
-        overlap = len(set(recognition_triples).intersection(set(true_triples))) # / len(recognition_triples)
+            overlap = len(set(recognition_triples).intersection(set(true_triples))) # / len(recognition_triples)
+        else:
+            leaves_match = False
+            overlap = 0
 
-        # Plot results
-        result_dir = "results"
-        #recognition_tree.visualize(save_as=os.path.join(result_dir, f'history_{self.N}_{"circular" if self.circular else "noncircular"}_{"clocklike" if self.clocklike else "nonclocklike"}.svg'))
+            # Plot results
+            result_dir = "results"
+            recognition_tree.visualize(save_as=os.path.join(result_dir, f'history_{self.N}_{"circular" if self.circular else "noncircular"}_{"clocklike" if self.clocklike else "nonclocklike"}.svg'))
 
 
         return {"runtime" : timedelta, 
                 "recognized_rmap": recognized_rmap, 
                 "leaves_match": leaves_match, 
-                "overlap": overlap }
+                "overlap": overlap,
+                "cooptimal_solutions": cooptimal_solutions }
 
 
     def run(self):
