@@ -3,6 +3,8 @@ import os
 import time
 import json
 
+from itertools import combinations, permutations
+
 
 from erdbeermet.simulation import simulate, load
 from erdbeermet.recognition import recognize
@@ -53,7 +55,7 @@ class Pipeline:
             overlap = 0
             # Plot results
             result_dir = "results"
-            #recognition_tree.visualize(save_as=os.path.join(result_dir, f'history_{self.N}_{"circular" if self.circular else "noncircular"}_{"clocklike" if self.clocklike else "nonclocklike"}.svg'))
+            recognition_tree.visualize(save_as=os.path.join(result_dir, f'tree_{self.N}_{"circular" if self.circular else "noncircular"}_{"clocklike" if self.clocklike else "nonclocklike"}.svg'))
 
 
         return {"runtime" : timedelta, 
@@ -62,16 +64,36 @@ class Pipeline:
                 "overlap": overlap,
                 "cooptimal_solutions": cooptimal_solutions }
 
-    def recognition_with_blocked_leaves(self, scenario):
-
+    def recognition_with_blocked_leaves(self, scenario, core_leaves_unknown=False, num_block_leaves=4):
+        
         first_4_leaves_sim = [scenario.history[0][0],
-                                scenario.history[0][2],
-                                scenario.history[1][2],
-                                scenario.history[2][2]]
+                            scenario.history[0][2],
+                            scenario.history[1][2],
+                            scenario.history[2][2]]
 
-        start_time = time.time()
-        recognition_tree = recognize(scenario.D, first_candidate_only=True, print_info=False, blocked_leaves=first_4_leaves_sim)
-        timedelta = time.time() - start_time
+        if core_leaves_unknown:
+            for blocked_leaves_candidate in combinations(range(self.N), num_block_leaves):
+                start_time = time.time()
+                recognition_tree = recognize(scenario.D, first_candidate_only=True, print_info=False, blocked_leaves=blocked_leaves_candidate)
+                timedelta = time.time() - start_time
+                recognized_rmap = recognition_tree.successes > 0
+                if recognized_rmap:
+                    break
+
+        else: 
+            if num_block_leaves == 4:
+                blocked_leaves = first_4_leaves_sim
+            elif num_block_leaves == 3:
+                blocked_leaves = [scenario.history[0][0],
+                                    scenario.history[0][2],
+                                    scenario.history[1][2]]
+            else:
+                print("blocked leaves must be 3 or 4")
+                return
+
+            start_time = time.time()
+            recognition_tree = recognize(scenario.D, first_candidate_only=True, print_info=False, blocked_leaves=blocked_leaves)
+            timedelta = time.time() - start_time
 
         # Classify whether the distance matrix was correctly recognized as an R-Map.
         recognized_rmap = recognition_tree.successes > 0
@@ -101,7 +123,7 @@ class Pipeline:
 
             # Plot results
             result_dir = "results"
-            recognition_tree.visualize(save_as=os.path.join(result_dir, f'history_{self.N}_{"circular" if self.circular else "noncircular"}_{"clocklike" if self.clocklike else "nonclocklike"}.svg'))
+            recognition_tree.visualize(save_as=os.path.join(result_dir, f'tree_{self.N}_{"circular" if self.circular else "noncircular"}_{"clocklike" if self.clocklike else "nonclocklike"}.svg'))
 
 
         return {"runtime" : timedelta, 
@@ -126,8 +148,11 @@ class Pipeline:
             scenario_4only = load(history_file, stop_after=4)
             plot_box_graph(scenario_4only.D, labels=['a', 'b', 'c', 'd'])
 
-        results["blocked_leaves"] = self.recognition_with_blocked_leaves(scenario)
-
+        results["blocked_leaves"] = self.recognition_with_blocked_leaves(scenario, num_block_leaves=4)
+        results["blocked_leaves_3"] = self.recognition_with_blocked_leaves(scenario, num_block_leaves=3)
+        results["blocked_leaves_unknown_4"] = self.recognition_with_blocked_leaves(scenario, core_leaves_unknown=True, num_block_leaves=4)
+        results["blocked_leaves_unknown_3"] = self.recognition_with_blocked_leaves(scenario, core_leaves_unknown=True, num_block_leaves=3)
+        
         return results
 
 if __name__ == "__main__":
@@ -144,6 +169,8 @@ if __name__ == "__main__":
                 runtimes_blocked_leaves = []
                 failed_recognitions_original_algo = 0
                 failed_recognitions_blocked_leaves = 0
+                cooptimal_solutions_original_algo = 0
+                cooptimal_solutions_blocked_leaves = 0
                 for i in range(sample_size):
                     pipe = Pipeline(matrix_size, clocklike=clocklike, circular=circular)
                     results_of_run = pipe.run()
@@ -153,12 +180,18 @@ if __name__ == "__main__":
                         failed_recognitions_original_algo += 1
                     if not results_of_run["blocked_leaves"]["recognized_rmap"]:
                         failed_recognitions_blocked_leaves += 1
+                    cooptimal_solutions_original_algo += results_of_run["original_algo"]["cooptimal_solutions"]
+                    cooptimal_solutions_blocked_leaves += results_of_run["blocked_leaves"]["cooptimal_solutions"]
                 avg_runtime_original_algo = sum(runtimes_original_algo) / len(runtimes_original_algo)
                 avg_runtime_blocked_leaves = sum(runtimes_blocked_leaves) / len(runtimes_blocked_leaves)
+                avg_cooptimal_solutions_original_algo = cooptimal_solutions_original_algo / sample_size
+                avg_cooptimal_solutions_blocked_leaves = cooptimal_solutions_blocked_leaves / sample_size
                 results[f"N={matrix_size}"][f"clocklike={clocklike}"][f"circular={circular}"] = {"original algo" : {"avg runtime" : avg_runtime_original_algo,
-                                                                                                                    "failed recognitions" : failed_recognitions_original_algo},
+                                                                                                                    "failed recognitions" : failed_recognitions_original_algo,
+                                                                                                                    "avg cooptimal solutions" : avg_cooptimal_solutions_original_algo},
                                                                                                 "blocked leaves" : {"avg runtime" : avg_runtime_blocked_leaves,
-                                                                                                                    "failed recognitions" : failed_recognitions_blocked_leaves}
+                                                                                                                    "failed recognitions" : failed_recognitions_blocked_leaves,
+                                                                                                                    "avg cooptimal solutions" : avg_cooptimal_solutions_blocked_leaves}
                 }
 
     print(results)
