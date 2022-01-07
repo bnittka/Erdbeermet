@@ -396,9 +396,9 @@ def recognize(D, first_candidate_only=False, print_info=False, blocked_leaves=No
 
             spike_lengths = dict()
             for x, y, z, u_witness, alpha in candidates:
-                delta_z = compute_spike_length(full_D, x, y, z)
-                delta_y = compute_spike_length(full_D, z, x, y)
-                delta_x = compute_spike_length(full_D, y, z, x)
+                delta_z = compute_spike_length(D, x, y, z)
+                delta_y = compute_spike_length(D, z, x, y)
+                delta_x = compute_spike_length(D, y, z, x)
                 spike_lengths[(x,y,z,u_witness,alpha)] = {x : delta_x, 
                                                           y: delta_y, 
                                                           z : delta_z}
@@ -407,9 +407,11 @@ def recognize(D, first_candidate_only=False, print_info=False, blocked_leaves=No
             for candidate1, candidate2 in combinations(spike_lengths.keys(), 2):
                 leaves_candidate1 = set(candidate1[:3])
                 leaves_candidate2 = set(candidate2[:3])
+                #print(leaves_candidate1, leaves_candidate2)
                 shared_leaves =  leaves_candidate1.intersection(leaves_candidate2) 
                 if len(shared_leaves) > 0:
                     shared_leaf = shared_leaves.pop()
+                    #print(spike_lengths[candidate1][shared_leaf], spike_lengths[candidate2][shared_leaf])
                     if spike_lengths[candidate1][shared_leaf] < spike_lengths[candidate2][shared_leaf]:
                         valid_candidates[candidate2] = False
                     else:
