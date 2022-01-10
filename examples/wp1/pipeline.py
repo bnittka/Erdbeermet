@@ -16,85 +16,55 @@ class Pipeline:
         self.clocklike = clocklike
         self.circular = circular
         self.branching_prob = 0.0
+        self.scenario = None
 
-    def recognition_original_algorithm(self, scenario):
+    def recognition(self, algorithm="original_algorithm", core_leaves_unknown=False, num_block_leaves=4):
+        """
+        algorithm: "original_algorithm" or "blocked_leaves", or "shortest_spike"
+        """
 
-        start_time = time.time()
-        recognition_tree = recognize(scenario.D, first_candidate_only=True, print_info=False)
-        timedelta = time.time() - start_time
+        first_4_leaves_sim = [self.scenario.history[0][0],
+                            self.scenario.history[0][2],
+                            self.scenario.history[1][2],
+                            self.scenario.history[2][2]]
 
-        # Classify whether the distance matrix was correctly recognized as an R-Map.
-        recognized_rmap = recognition_tree.successes > 0
+        if algorithm == "blocked_leaves":
 
-        # Classify whether the final 4-leaf map after recognition matches the first 4 leaves of the simulation.
-        cooptimal_solutions = 0
-        for node in recognition_tree.preorder():
-            if node.valid_ways == 1:
-                final_4_leaf_map = node.V
-                cooptimal_solutions += 1
+            if core_leaves_unknown:
+                for blocked_leaves_candidate in combinations(range(self.N), num_block_leaves):
+                    start_time = time.time()
+                    recognition_tree = recognize(self.scenario.D, first_candidate_only=True, print_info=False, blocked_leaves=blocked_leaves_candidate)
+                    timedelta = time.time() - start_time
+                    recognized_rmap = recognition_tree.successes > 0
+                    if recognized_rmap:
+                        break
 
-        first_4_leaves_sim = [scenario.history[0][0],
-                                scenario.history[0][2],
-                                scenario.history[1][2],
-                                scenario.history[2][2]]
+            else: 
+                if num_block_leaves == 4:
+                    blocked_leaves = first_4_leaves_sim
+                elif num_block_leaves == 3:
+                    blocked_leaves = [self.scenario.history[0][0],
+                                        self.scenario.history[0][2],
+                                        self.scenario.history[1][2]]
+                else:
+                    print("blocked leaves must be 3 or 4")
+                    return
 
-        # leaves_match = first_4_leaves_sim in final_4_leaf_maps
-
-        if recognized_rmap:
-            leaves_match = first_4_leaves_sim == final_4_leaf_map
-
-
-            # Measure divergence of the reconstructed steps from true steps of the simulation, e.g. by counting common triples.
-            true_triples = [tuple(sorted(step[:3])) for step in scenario.history]
-
-            recognition_triples = [node.R_step[:3] for node in recognition_tree.postorder() if node.R_step is not None and node.valid_ways > 0]
-
-            overlap = len(set(recognition_triples).intersection(set(true_triples))) # / len(recognition_triples)
-        else:
-            leaves_match = False
-            overlap = 0
-            # Plot results
-            result_dir = "results"
-            recognition_tree.visualize(save_as=os.path.join(result_dir, f'tree_{self.N}_{"circular" if self.circular else "noncircular"}_{"clocklike" if self.clocklike else "nonclocklike"}.svg'))
-
-
-        return {"runtime" : timedelta, 
-                "recognized_rmap": recognized_rmap, 
-                "leaves_match": leaves_match, 
-                "overlap": overlap,
-                "cooptimal_solutions": cooptimal_solutions }
-
-    def recognition_with_blocked_leaves(self, scenario, core_leaves_unknown=False, num_block_leaves=4):
-        
-        first_4_leaves_sim = [scenario.history[0][0],
-                            scenario.history[0][2],
-                            scenario.history[1][2],
-                            scenario.history[2][2]]
-
-        if core_leaves_unknown:
-            for blocked_leaves_candidate in combinations(range(self.N), num_block_leaves):
                 start_time = time.time()
-                recognition_tree = recognize(scenario.D, first_candidate_only=True, print_info=False, blocked_leaves=blocked_leaves_candidate)
+                recognition_tree = recognize(self.scenario.D, first_candidate_only=True, print_info=False, blocked_leaves=blocked_leaves)
                 timedelta = time.time() - start_time
-                recognized_rmap = recognition_tree.successes > 0
-                if recognized_rmap:
-                    break
 
-        else: 
-            if num_block_leaves == 4:
-                blocked_leaves = first_4_leaves_sim
-            elif num_block_leaves == 3:
-                blocked_leaves = [scenario.history[0][0],
-                                    scenario.history[0][2],
-                                    scenario.history[1][2]]
-            else:
-                print("blocked leaves must be 3 or 4")
-                return
-
+        elif algorithm == "original_algorithm":
             start_time = time.time()
-            recognition_tree = recognize(scenario.D, first_candidate_only=True, print_info=False, blocked_leaves=blocked_leaves)
+            recognition_tree = recognize(self.scenario.D, first_candidate_only=True, print_info=False)
             timedelta = time.time() - start_time
 
+        elif algorithm == "shortest_spike":
+            print("not yet implemented")
+
+        else:
+            print("no algorithm with that name")
+
         # Classify whether the distance matrix was correctly recognized as an R-Map.
         recognized_rmap = recognition_tree.successes > 0
 
@@ -112,7 +82,7 @@ class Pipeline:
 
 
             # Measure divergence of the reconstructed steps from true steps of the simulation, e.g. by counting common triples.
-            true_triples = [tuple(sorted(step[:3])) for step in scenario.history]
+            true_triples = [tuple(sorted(step[:3])) for step in self.scenario.history]
 
             recognition_triples = [node.R_step[:3] for node in recognition_tree.postorder() if node.R_step is not None and node.valid_ways > 0]
 
@@ -133,33 +103,44 @@ class Pipeline:
                 "cooptimal_solutions": cooptimal_solutions }
 
 
-    def run(self):
+    def simulate(self):
+        self.scenario = simulate(self.N, self.branching_prob, self.circular, self.clocklike)
+    
+    def run_all(self):
 
         result_dir = "results"
         results = dict()
 
-        scenario = simulate(self.N, self.branching_prob, self.circular, self.clocklike)
+        for algorithm in ["original_algorithm", "blocked_leaves", "shortest_spike"]:
+            
+            if algorithm == "blocked_leaves":
+                for num_blocked_leaves in [3,4]:
+                    for core_leaves_unknown in [True, False]:
+                        algo_results = self.recognition(algorithm=algorithm, core_leaves_unknown=core_leaves_unknown, num_block_leaves=num_blocked_leaves)
+                        results[f"{algorithm}_{core_leaves_unknown}_{num_blocked_leaves}"] = algo_results
+                        if not algo_results["recognized_rmap"]:
+                            history_file = os.path.join(result_dir, f'history_{self.N}_{"circular" if self.circular else "noncircular"}_{"clocklike" if self.clocklike else "nonclocklike"}')
+                            self.scenario.write_history(history_file)
+                            scenario_4only = load(history_file, stop_after=4)
+                            plot_box_graph(scenario_4only.D, labels=['a', 'b', 'c', 'd'])
+            else:
+                algo_results = self.recognition(algorithm=algorithm)
+                results[algorithm] = algo_results
+                if not algo_results["recognized_rmap"]:
+                    history_file = os.path.join(result_dir, f'history_{self.N}_{"circular" if self.circular else "noncircular"}_{"clocklike" if self.clocklike else "nonclocklike"}')
+                    self.scenario.write_history(history_file)
+                    scenario_4only = load(history_file, stop_after=4)
+                    plot_box_graph(scenario_4only.D, labels=['a', 'b', 'c', 'd'])
 
-        results["original_algo"] = self.recognition_original_algorithm(scenario)
-
-        if not results["original_algo"]["recognized_rmap"]:
-            history_file = os.path.join(result_dir, f'history_{self.N}_{"circular" if self.circular else "noncircular"}_{"clocklike" if self.clocklike else "nonclocklike"}')
-            scenario.write_history(history_file)
-            scenario_4only = load(history_file, stop_after=4)
-            plot_box_graph(scenario_4only.D, labels=['a', 'b', 'c', 'd'])
-
-        results["blocked_leaves"] = self.recognition_with_blocked_leaves(scenario, num_block_leaves=4)
-        results["blocked_leaves_3"] = self.recognition_with_blocked_leaves(scenario, num_block_leaves=3)
-        results["blocked_leaves_unknown_4"] = self.recognition_with_blocked_leaves(scenario, core_leaves_unknown=True, num_block_leaves=4)
-        results["blocked_leaves_unknown_3"] = self.recognition_with_blocked_leaves(scenario, core_leaves_unknown=True, num_block_leaves=3)
-        
         return results
+                
 
 if __name__ == "__main__":
 
     sample_size = 10
     pipe = Pipeline(6)
-    results_of_run = pipe.run()
+    pipe.simulate()
+    results_of_run = pipe.run_all()
    
 """     results = dict()
     for matrix_size in [6]:
