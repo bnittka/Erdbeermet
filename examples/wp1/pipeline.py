@@ -7,7 +7,7 @@ from itertools import combinations, permutations
 
 
 from erdbeermet.simulation import simulate, load
-from erdbeermet.recognition import recognize
+from erdbeermet.recognition import recognize, LoopException
 from erdbeermet.visualize.BoxGraphVis import plot_box_graph
 
 class Pipeline:
@@ -16,12 +16,22 @@ class Pipeline:
         self.clocklike = clocklike
         self.circular = circular
         self.branching_prob = 0.0
+        self.scenario = None
 
-    def recognition_original_algorithm(self, scenario):
+    def recognition_original_algorithm(self, scenario, use_shortest_spike=False):
 
-        start_time = time.time()
-        recognition_tree = recognize(scenario.D, first_candidate_only=True, print_info=False)
-        timedelta = time.time() - start_time
+        if use_shortest_spike:
+            try:
+                start_time = time.time()
+                recognition_tree = recognize(scenario.D, first_candidate_only=True, print_info=False, use_shortest_spike=True)
+                timedelta = time.time() - start_time
+            except(LoopException):
+                return {"loop" : True}
+
+        else:
+            start_time = time.time()
+            recognition_tree = recognize(scenario.D, first_candidate_only=True, print_info=False)
+            timedelta = time.time() - start_time
 
         # Classify whether the distance matrix was correctly recognized as an R-Map.
         recognized_rmap = recognition_tree.successes > 0
@@ -55,14 +65,15 @@ class Pipeline:
             overlap = 0
             # Plot results
             result_dir = "results"
-            recognition_tree.visualize(save_as=os.path.join(result_dir, f'tree_{self.N}_{"circular" if self.circular else "noncircular"}_{"clocklike" if self.clocklike else "nonclocklike"}.svg'))
+            #recognition_tree.visualize(save_as=os.path.join(result_dir, f'tree_{self.N}_{"circular" if self.circular else "noncircular"}_{"clocklike" if self.clocklike else "nonclocklike"}.svg'))
 
 
         return {"runtime" : timedelta, 
                 "recognized_rmap": recognized_rmap, 
                 "leaves_match": leaves_match, 
                 "overlap": overlap,
-                "cooptimal_solutions": cooptimal_solutions }
+                "cooptimal_solutions": cooptimal_solutions, 
+                "loop": False }
 
     def recognition_with_blocked_leaves(self, scenario, core_leaves_unknown=False, num_block_leaves=4):
         
@@ -123,7 +134,7 @@ class Pipeline:
 
             # Plot results
             result_dir = "results"
-            recognition_tree.visualize(save_as=os.path.join(result_dir, f'tree_{self.N}_{"circular" if self.circular else "noncircular"}_{"clocklike" if self.clocklike else "nonclocklike"}.svg'))
+            #recognition_tree.visualize(save_as=os.path.join(result_dir, f'tree_{self.N}_{"circular" if self.circular else "noncircular"}_{"clocklike" if self.clocklike else "nonclocklike"}.svg'))
 
 
         return {"runtime" : timedelta, 
@@ -132,34 +143,105 @@ class Pipeline:
                 "overlap": overlap,
                 "cooptimal_solutions": cooptimal_solutions }
 
+    def simulate(self):
+        self.scenario = simulate(self.N, self.branching_prob, self.circular, self.clocklike)
 
-    def run(self):
+    def run_original_algo(self):
+        return self.recognition_original_algorithm(self.scenario)
+
+    def run_blocked_leaves(self, core_leaves_unknown=False, num_blocked_leaves=4):
+        return self.recognition_with_blocked_leaves(self.scenario, core_leaves_unknown=core_leaves_unknown, num_block_leaves=num_blocked_leaves)
+
+    def run_shortest_spike(self):
+        return self.recognition_original_algorithm(self.scenario, use_shortest_spike=True)
+
+    def run_all(self):
 
         result_dir = "results"
         results = dict()
 
-        scenario = simulate(self.N, self.branching_prob, self.circular, self.clocklike)
 
-        results["original_algo"] = self.recognition_original_algorithm(scenario)
+
+        results["original_algo"] = self.recognition_original_algorithm()
 
         if not results["original_algo"]["recognized_rmap"]:
             history_file = os.path.join(result_dir, f'history_{self.N}_{"circular" if self.circular else "noncircular"}_{"clocklike" if self.clocklike else "nonclocklike"}')
-            scenario.write_history(history_file)
+            self.scenario.write_history(history_file)
             scenario_4only = load(history_file, stop_after=4)
-            plot_box_graph(scenario_4only.D, labels=['a', 'b', 'c', 'd'])
+            #plot_box_graph(scenario_4only.D, labels=['a', 'b', 'c', 'd'])
 
-        results["blocked_leaves"] = self.recognition_with_blocked_leaves(scenario, num_block_leaves=4)
-        results["blocked_leaves_3"] = self.recognition_with_blocked_leaves(scenario, num_block_leaves=3)
-        results["blocked_leaves_unknown_4"] = self.recognition_with_blocked_leaves(scenario, core_leaves_unknown=True, num_block_leaves=4)
-        results["blocked_leaves_unknown_3"] = self.recognition_with_blocked_leaves(scenario, core_leaves_unknown=True, num_block_leaves=3)
+        results["shortest_spike"] = self.recognition_original_algorithm(self.scenario, use_shortest_spike=True)
+
+        results["blocked_leaves"] = self.recognition_with_blocked_leaves(self.scenario, num_block_leaves=4)
+        results["blocked_leaves_3"] = self.recognition_with_blocked_leaves(self.scenario, num_block_leaves=3)
+        results["blocked_leaves_unknown_4"] = self.recognition_with_blocked_leaves(self.scenario, core_leaves_unknown=True, num_block_leaves=4)
+        results["blocked_leaves_unknown_3"] = self.recognition_with_blocked_leaves(self.scenario, core_leaves_unknown=True, num_block_leaves=3)
         
         return results
 
 if __name__ == "__main__":
 
-    sample_size = 10
-    pipe = Pipeline(6)
-    results_of_run = pipe.run()
+    sample_size = 1000
+    number_of_fails_original = 0
+    number_of_fails_shortest_spike = 0
+    number_of_fails_blocked_leaves = 0
+    runtimes_blocked_leaves = []
+    runtimes_original_algo = []
+    runtimes_shortest_spike = []
+    cooptimal_solutions_original_algo = 0
+    cooptimal_solutions_blocked_leaves = 0
+    cooptimal_solutions_shortest_spike = 0
+    loop_count_shortest_spike = 0
+
+    for i in range(sample_size):
+        pipe = Pipeline(6)
+        pipe.simulate()
+        results_of_original_algo = pipe.run_original_algo()
+        runtimes_original_algo.append(results_of_original_algo["runtime"])
+        cooptimal_solutions_original_algo += results_of_original_algo["cooptimal_solutions"]
+        if not results_of_original_algo["recognized_rmap"]:
+            number_of_fails_original += 1
+            results_of_shortest_spike = pipe.run_shortest_spike()
+            if not results_of_shortest_spike["loop"]:
+                runtimes_shortest_spike.append(results_of_shortest_spike["runtime"])
+                cooptimal_solutions_shortest_spike += results_of_shortest_spike["cooptimal_solutions"]
+                if not results_of_shortest_spike["recognized_rmap"]:
+                    number_of_fails_shortest_spike += 1
+            else:
+                loop_count_shortest_spike += 1
+
+            results_of_blocked_leaves = pipe.run_blocked_leaves()
+            runtimes_blocked_leaves.append(results_of_blocked_leaves["runtime"])
+            cooptimal_solutions_blocked_leaves += results_of_blocked_leaves["cooptimal_solutions"]
+            if not results_of_blocked_leaves["recognized_rmap"]:
+                number_of_fails_blocked_leaves += 1
+
+    
+    avg_runtime_original_algo = sum(runtimes_original_algo) / sample_size
+    avg_runtime_blocked_leaves = sum(runtimes_blocked_leaves) / sample_size
+    avg_runtime_shortest_spike = sum(runtimes_shortest_spike) / sample_size
+    avg_cooptimal_solutions_original_algo = cooptimal_solutions_original_algo / sample_size
+    avg_cooptimal_solutions_blocked_leaves = cooptimal_solutions_blocked_leaves / sample_size
+    avg_cooptimal_solutions_shortest_spike = cooptimal_solutions_shortest_spike / sample_size
+
+    results = {"original algo" : {"avg runtime" : avg_runtime_original_algo,
+                        "failed recognitions" : number_of_fails_original,
+                        "avg cooptimal solutions" : avg_cooptimal_solutions_original_algo},
+                "blocked leaves" : {"avg runtime" : avg_runtime_blocked_leaves,
+                        "failed recognitions" : number_of_fails_blocked_leaves,
+                        "avg cooptimal solutions" : avg_cooptimal_solutions_blocked_leaves},
+                "shortest spike" : {"avg runtime" : avg_runtime_shortest_spike,
+                        "failed recognitions" : number_of_fails_shortest_spike,
+                        "avg cooptimal solutions" : avg_cooptimal_solutions_shortest_spike,
+                        "loops found" : loop_count_shortest_spike}
+    }
+
+    print(results)
+    resultdir = "results"
+    outfile = os.path.join(resultdir, f"results_samplesize{sample_size}.json")
+    with open(outfile, "w") as f: 
+        json.dump(results, f)
+
    
 """     results = dict()
     for matrix_size in [6]:

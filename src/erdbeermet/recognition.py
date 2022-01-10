@@ -2,11 +2,15 @@
 
 from itertools import combinations, permutations
 import numpy as np
+import json
 
 from erdbeermet.tools.Tree import Tree, TreeNode
 
 
 __author__ = 'David Schaller'
+
+class LoopException(Exception):
+    pass
 
 
 def is_pseudometric(D, rtol=1e-05, atol=1e-08, print_info=False, V=None,
@@ -336,9 +340,10 @@ def _finalize_tree(recognition_tree):
     _sort_children(recognition_tree.root)
     
 def compute_spike_length(D, x, y, z):
+    # wrong
     return 0.5 * (D[x,z] + D[y,z] - D[x,y])
 
-def recognize(D, first_candidate_only=False, print_info=False, blocked_leaves=None):
+def recognize(D, first_candidate_only=False, print_info=False, blocked_leaves=None, use_shortest_spike=False):
     """Recognition of type R matrices.
     
     Parameters
@@ -394,32 +399,48 @@ def recognize(D, first_candidate_only=False, print_info=False, blocked_leaves=No
             candidates = _find_candidates(D, V, print_info, blocked_leaves)
             # find shortest spike
 
-            spike_lengths = dict()
-            for x, y, z, u_witness, alpha in candidates:
-                delta_z = compute_spike_length(D, x, y, z)
-                delta_y = compute_spike_length(D, z, x, y)
-                delta_x = compute_spike_length(D, y, z, x)
-                spike_lengths[(x,y,z,u_witness,alpha)] = {x : delta_x, 
-                                                          y: delta_y, 
-                                                          z : delta_z}
-            valid_candidates = {candidate : True for candidate in candidates}
-            
-            for candidate1, candidate2 in combinations(spike_lengths.keys(), 2):
-                leaves_candidate1 = set(candidate1[:3])
-                leaves_candidate2 = set(candidate2[:3])
-                #print(leaves_candidate1, leaves_candidate2)
-                shared_leaves =  leaves_candidate1.intersection(leaves_candidate2) 
-                if len(shared_leaves) > 0:
-                    shared_leaf = shared_leaves.pop()
-                    #print(spike_lengths[candidate1][shared_leaf], spike_lengths[candidate2][shared_leaf])
-                    if spike_lengths[candidate1][shared_leaf] < spike_lengths[candidate2][shared_leaf]:
-                        valid_candidates[candidate2] = False
-                    else:
-                        valid_candidates[candidate1] = False
+            if candidates:
 
-            print(valid_candidates)
+                if use_shortest_spike:
+
+                    spike_lengths = dict()
+                    for x, y, z, u_witness, alpha in candidates:
+                        delta_z, d_xy, delta_x, delta_y = _compute_deltas(V, D, alpha, x, y, z, u_witness)
+                        spike_lengths[(x,y,z,u_witness,alpha)] = {x : delta_x, 
+                                                                y: delta_y, 
+                                                                z : delta_z}
+
+                    valid_candidates = {candidate : True for candidate in candidates}
+                    
+                    for candidate1, candidate2 in combinations(spike_lengths.keys(), 2):
+                        leaves_candidate1 = set(candidate1[:3])
+                        leaves_candidate2 = set(candidate2[:3])
+                        #print(leaves_candidate1, leaves_candidate2)
+                        shared_leaves =  leaves_candidate1.intersection(leaves_candidate2) 
+                        if len(shared_leaves) > 0:
+                            shared_leaf = shared_leaves.pop()
+                            #print(spike_lengths[candidate1][shared_leaf], spike_lengths[candidate2][shared_leaf])
+                            if spike_lengths[candidate1][shared_leaf] < spike_lengths[candidate2][shared_leaf]:
+                                valid_candidates[candidate2] = False
+                            else:
+                                valid_candidates[candidate1] = False
 
 
+                    candidates = [candidate for candidate, valid in valid_candidates.items() if valid][:1]
+
+                    if candidates == []:
+                        loop_info = {
+                            "D" : D, 
+                            "candidates" : valid_candidates.keys(),
+                            "spike_lengths" : spike_lengths
+                        }
+                        with open("loop_info.txt", "w") as f:
+                            f.write(str(D) + "\n")
+                            f.write(str(valid_candidates.keys()) + "\n")
+                            f.write(str(spike_lengths))
+                            #json.dump(loop_info, f)
+
+                        raise LoopException("there seems to be a loop in the spike lengths")
 
             found_valid = False
             
