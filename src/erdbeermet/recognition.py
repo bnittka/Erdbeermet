@@ -399,7 +399,7 @@ def recognize(D, first_candidate_only=False, print_info=False, blocked_leaves=No
             candidates = _find_candidates(D, V, print_info, blocked_leaves)
             # find shortest spike
 
-            if candidates:
+            if candidates and n > 5:
 
                 if use_shortest_spike:
 

@@ -181,7 +181,7 @@ class Pipeline:
 
 if __name__ == "__main__":
 
-    sample_size = 10000
+    sample_size = 100
     num_leaves = 9
     number_of_fails_original = 0
     number_of_fails_shortest_spike = 0
