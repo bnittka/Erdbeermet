@@ -181,7 +181,8 @@ class Pipeline:
 
 if __name__ == "__main__":
 
-    sample_size = 1000
+    sample_size = 10000
+    num_leaves = 9
     number_of_fails_original = 0
     number_of_fails_shortest_spike = 0
     number_of_fails_blocked_leaves = 0
@@ -194,7 +195,9 @@ if __name__ == "__main__":
     loop_count_shortest_spike = 0
 
     for i in range(sample_size):
-        pipe = Pipeline(6)
+        if i%100 == 0:
+            print(f"Simulated {i} samples")
+        pipe = Pipeline(num_leaves)
         pipe.simulate()
         results_of_original_algo = pipe.run_original_algo()
         runtimes_original_algo.append(results_of_original_algo["runtime"])
@@ -238,7 +241,7 @@ if __name__ == "__main__":
 
     print(results)
     resultdir = "results"
-    outfile = os.path.join(resultdir, f"results_samplesize{sample_size}.json")
+    outfile = os.path.join(resultdir, f"results_samplesize{sample_size}_{num_leaves}leaves.json")
     with open(outfile, "w") as f: 
         json.dump(results, f)
 
