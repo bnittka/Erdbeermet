@@ -1,3 +1,44 @@
+# Beschreibung Praktikumscode
+
+Die Pipeline und damit der Haupt-Code befindet sich in der Datei examples/wp1/pipeline.py
+
+Ausführen der Datei führt eine bestimmte Anzahl von Simulationen gefolgt von einem Reconition-Versuch durch und speichert die Ergebnisse.
+
+In der main Funktion von pipeline.py können die Parameter verändert werden:
+
+- sample size (Anzahl der Simulationen)
+- number of leaves (Anzahl der Blätter)
+- algorithm ("original algorithm", "blocked leaves", "shortest spike")
+- simulation mode (circular, clocklike, normal)
+
+Die Ergebnisse der Simulation werden in folgender Ordnerstruktur gespeichert:
+```
+├── base_dir
+│   ├── n
+│   │   ├── mode
+│   │   |   ├── failed_scenarios
+|   |   |   |   ├── scnenario_file_1
+|   |   |   |   ├── ...
+│   |   |   ├── result_file
+``` 
+Der Name vom base_dir muss in der main-Funktion manuell festgelegt werden, z.B. je nachdem welcher Algorithmus verwendet wird results_wp2, result_wp3 etc.
+Die anderen Ordner werden automatisch erzeugt und benannt.
+
+Das result_file enthält einen Überblick über die Ergebnisse des Durchlaufs:
+- Anzahl der fehlgeschlagenen Recognitions
+- durchschnittliche Laufzeit pro Recognition
+- durchschnittliche Anzahl von cooptimal solutions
+
+Der failed_scenarios Ordner enthält die Histories der fehlgeschlagenen Simulationen, pro History eine Datei.
+
+Autoren:
+Bente Nittka, Elizabet Lorenz, Richard Prey
+
+
+
+
+
+
 # Erdbeermet
 
 A Python library for generating, visualizing, manipulating and recognizing type R (pseudo)metrics
